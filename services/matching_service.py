@@ -1,41 +1,101 @@
 import numpy as np
-from models.student_store import get_students_for_class
 
-def cosine_similarity(a, b):
-    return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
+# Example structure of a student:
+# {
+#     "id": "student_123",
+#     "name": "Ali",
+#     "class_id": "class_1",
+#     "embedding": [0.12, 0.45, ..., 0.87]  # 512-dim float list
+# }
 
-def best_match_in_class(class_id, new_embedding):
-    students = get_students_for_class(class_id)
+# -----------------------------
+# Config
+# -----------------------------
+MATCH_THRESHOLD = 0.6
 
-    best_score = -1
-    best_student = None
+# -----------------------------
+# Load students (in-memory)
+# -----------------------------
+# These should be replaced with actual DB queries or file loading
+_all_students_cache = None
+_class_students_cache = {}
 
-    for student in students:
-        score = cosine_similarity(new_embedding, student["embedding"])
+def load_all_students():
+    global _all_students_cache
+    if _all_students_cache is None:
+        # Replace this with your DB call or JSON loading
+        _all_students_cache = []  # Example: get_all_students_from_db()
+    return _all_students_cache
 
-        if score > best_score:
-            best_score = score
-            best_student = student
+def load_students_for_class(class_id):
+    global _class_students_cache
+    if class_id not in _class_students_cache:
+        # Replace this with DB call or JSON filtering
+        all_students = load_all_students()
+        _class_students_cache[class_id] = [s for s in all_students if s["class_id"] == class_id]
+    return _class_students_cache[class_id]
 
-    if best_score > 0.6:  # tune later
-        return best_student
+# -----------------------------
+# Cosine similarity
+# -----------------------------
+def cosine_similarity_matrix(embeddings, new_embedding):
+    """
+    embeddings: np.array shape (N, D)
+    new_embedding: np.array shape (D,)
+    returns: np.array shape (N,) of cosine similarities
+    """
+    embeddings_norm = embeddings / np.linalg.norm(embeddings, axis=1, keepdims=True)
+    new_embedding_norm = new_embedding / np.linalg.norm(new_embedding)
+    return embeddings_norm @ new_embedding_norm
 
+# -----------------------------
+# Best match functions
+# -----------------------------
+def best_match(new_embedding, students=None, threshold=MATCH_THRESHOLD):
+    """
+    Search all students for best match
+    """
+    if students is None:
+        students = load_all_students()
+
+    if not students:
+        return None
+
+    embeddings = np.array([s["embedding"] for s in students])
+    new_vec = np.array(new_embedding)
+
+    similarities = cosine_similarity_matrix(embeddings, new_vec)
+    idx = np.argmax(similarities)
+
+    if similarities[idx] > threshold:
+        return students[idx]
     return None
 
-def best_match( new_embedding):
-    students = get_all_students()
+def best_match_in_class(new_embedding, students=None, threshold=MATCH_THRESHOLD):
+    """
+    Search students in a class for best match
+    """
+    if students is None:
+        raise ValueError("students list must be provided for class search")
 
-    best_score = -1
-    best_student = None
+    if not students:
+        return None
 
-    for student in students:
-        score = cosine_similarity(new_embedding, student["embedding"])
+    embeddings = np.array([s["embedding"] for s in students])
+    new_vec = np.array(new_embedding)
 
-        if score > best_score:
-            best_score = score
-            best_student = student
+    similarities = cosine_similarity_matrix(embeddings, new_vec)
+    idx = np.argmax(similarities)
 
-    if best_score > 0.6:  # tune later
-        return best_student
-
+    if similarities[idx] > threshold:
+        return students[idx]
     return None
+
+# -----------------------------
+# Helper functions for app.py
+# -----------------------------
+def get_all_students_data():
+    return load_all_students()
+
+def get_students_for_class(class_id):
+    return load_students_for_class(class_id)
