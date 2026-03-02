@@ -4,7 +4,7 @@ import numpy as np
 import cv2
 
 # preload model once
-model = DeepFace.build_model("ArcFace")
+model = DeepFace.build_model("OpenFace")
 
 def base64_to_image(base64_string):
     img_data = base64.b64decode(base64_string)
@@ -17,7 +17,7 @@ def generate_embedding(base64_string):
 
     result = DeepFace.represent(
         img_path=img,
-        model_name="ArcFace",
+        model_name="OpenFace",
         enforce_detection=True
     )
 
