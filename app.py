@@ -10,6 +10,16 @@ app = Flask(__name__)
 MATCH_THRESHOLD = 0.6
 
 # -----------------------------
+# Health check
+# -----------------------------
+@app.route("/health", methods=["GET"])
+def health_check():
+    return {
+        "status": "ok",
+        "service": "face-attendance-api"
+    }, 200
+
+# -----------------------------
 # Search through all students
 # -----------------------------
 @app.route("/get_all_students", methods=["POST"])
