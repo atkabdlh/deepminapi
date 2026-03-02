@@ -1,7 +1,7 @@
 from flask import Flask, request, jsonify
+import os
 from services.embedding_service import generate_embedding, generate_multiple_embeddings
 from services.matching_service import best_match, best_match_in_class, get_students_for_class, get_all_students_data
-
 app = Flask(__name__)
 
 # -----------------------------
@@ -14,10 +14,10 @@ MATCH_THRESHOLD = 0.6
 # -----------------------------
 @app.route("/health", methods=["GET"])
 def health_check():
-    return {
+    return jsonify({
         "status": "ok",
         "service": "face-attendance-api"
-    }, 200
+    }), 200
 
 # -----------------------------
 # Search through all students
