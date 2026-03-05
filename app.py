@@ -1,6 +1,7 @@
 from flask import Flask, request, jsonify, send_file
 import os
-from services.embedding_service import generate_embedding, generate_multiple_embeddings
+import sys
+from services.embedding_service import generate_embedding, generate_multiple_embeddings, base64_to_image
 from services.matching_service import best_match, best_match_in_class, get_students_for_class, get_all_students_data
 from services.student_service import load_students, save_students
 app = Flask(__name__)
@@ -122,30 +123,39 @@ def register_student():
         image_base64 = data.get("image")
 
         if not name or not image_base64:
+            print("[register] Missing name or image")
+            sys.stdout.flush()
             return jsonify({"error": "Missing name or image"}), 400
 
+        print(f"[register] Received request to register student: {name}")
+        sys.stdout.flush()
+
+        # Generate embedding directly from base64
+        print("[register] Generating embedding...")
+        sys.stdout.flush()
         embedding = generate_embedding(image_base64)
+        print(f"[register] Embedding generated, length: {len(embedding)}")
+        sys.stdout.flush()
 
+        # Load current students
         students = load_students()
-
-        # Remove duplicate by name
-        students = [s for s in students if s.get("name") != name]
 
         # Append new student
         students.append({
             "name": name,
             "embedding": embedding
-            # optionally add: "class_id": data.get("class_id")
         })
 
-        save_students(students)  # cache updated automatically
+        # Save to file
+        save_students(students)
+        print(f"[register] Student '{name}' saved successfully. Total students: {len(students)}")
+        sys.stdout.flush()
 
-        return jsonify({
-            "success": True,
-            "student": name
-        })
+        return jsonify({"success": True, "student": name})
 
     except Exception as e:
+        print(f"[register] ERROR: {e}")
+        sys.stdout.flush()
         return jsonify({"error": str(e)}), 400
 
 # -----------------------------
