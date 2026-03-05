@@ -1,7 +1,12 @@
 #!/bin/bash
 
-echo "Starting background worker..."
-python3 worker.py &
+# Activate venv
+source venv/bin/activate
 
+# Start background worker
+echo "Starting worker..."
+nohup python3 worker.py > worker.log 2>&1 &
+
+# Start Flask API via Gunicorn
 echo "Starting Flask API..."
-exec gunicorn --bind 0.0.0.0:5000 app:app
+gunicorn app:app -b 0.0.0.0:5000 -w 1 --timeout 120
