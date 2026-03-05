@@ -1,7 +1,8 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_file
 import os
 from services.embedding_service import generate_embedding, generate_multiple_embeddings
 from services.matching_service import best_match, best_match_in_class, get_students_for_class, get_all_students_data
+from services.student_service import load_students, save_students
 app = Flask(__name__)
 
 # -----------------------------
@@ -110,6 +111,78 @@ def generate_single_embedding_endpoint():
     except Exception as e:
         return jsonify({"error": str(e)}), 400
 
+# -----------------------------
+# Register a student
+# -----------------------------
+@app.route("/register-student", methods=["POST"])
+def register_student():
+    try:
+        data = request.json
+        name = data.get("name")
+        image_base64 = data.get("image")
+
+        if not name or not image_base64:
+            return jsonify({"error": "Missing name or image"}), 400
+
+        embedding = generate_embedding(image_base64)
+
+        students = load_students()
+
+        # Remove duplicate by name
+        students = [s for s in students if s.get("name") != name]
+
+        # Append new student
+        students.append({
+            "name": name,
+            "embedding": embedding
+            # optionally add: "class_id": data.get("class_id")
+        })
+
+        save_students(students)  # cache updated automatically
+
+        return jsonify({
+            "success": True,
+            "student": name
+        })
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+# -----------------------------
+# View all students
+# -----------------------------
+@app.route("/view-students", methods=["GET"])
+def view_students():
+    students = load_students()
+    return jsonify(students)
+
+# -----------------------------
+# Export all students
+# -----------------------------
+# Open in browser: https://your-render-url/export-students
+# Download: students.json
+@app.route("/export-students", methods=["GET"])
+def export_students():
+    file_path = "students.json"
+
+    if not os.path.exists(file_path):
+        return {"error": "No data found"}, 404
+
+    return send_file(file_path, as_attachment=True)
+
+# -----------------------------
+# Import all students
+# -----------------------------
+@app.route("/import-students", methods=["POST"])
+def import_students():
+    data = request.json
+
+    if not isinstance(data, list):
+        return {"error": "Invalid format"}, 400
+
+    save_students(data)
+
+    return {"success": True}
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))  
