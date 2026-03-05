@@ -1,7 +1,8 @@
 from flask import Flask, request, jsonify, send_file
 import os
-import sys
-from services.embedding_service import generate_embedding, generate_multiple_embeddings, base64_to_image
+import json
+from uuid import uuid4
+from services.embedding_service import generate_embedding, generate_multiple_embeddings, save_temp_image
 from services.matching_service import best_match, best_match_in_class, get_students_for_class, get_all_students_data
 from services.student_service import load_students, save_students
 app = Flask(__name__)
@@ -10,6 +11,9 @@ app = Flask(__name__)
 # Global constants
 # -----------------------------
 MATCH_THRESHOLD = 0.6
+
+TEMP_JOB_DIR = "temp_jobs"
+os.makedirs(TEMP_JOB_DIR, exist_ok=True)
 
 # -----------------------------
 # Health check
@@ -112,51 +116,91 @@ def generate_single_embedding_endpoint():
     except Exception as e:
         return jsonify({"error": str(e)}), 400
 
+
+
+
+
 # -----------------------------
-# Register a student
+# Start registration
 # -----------------------------
 @app.route("/register-student", methods=["POST"])
-def register_student():
+def start_register_student():
     try:
         data = request.json
         name = data.get("name")
         image_base64 = data.get("image")
 
         if not name or not image_base64:
-            print("[register] Missing name or image")
-            sys.stdout.flush()
             return jsonify({"error": "Missing name or image"}), 400
 
-        print(f"[register] Received request to register student: {name}")
-        sys.stdout.flush()
+        job_id = uuid4().hex
+        save_temp_image(job_id, name, image_base64)
 
-        # Generate embedding directly from base64
-        print("[register] Generating embedding...")
-        sys.stdout.flush()
+        print(f"[job] Created job {job_id} for student {name}")
+        return jsonify({"job_id": job_id, "status": "pending"})
+
+    except Exception as e:
+        print(f"[job] ERROR in start_register_student: {e}")
+        return jsonify({"error": str(e)}), 500
+
+# -----------------------------
+# Complete registration
+# -----------------------------
+@app.route("/complete-register/<job_id>", methods=["POST"])
+def complete_register(job_id):
+    try:
+        job_file = os.path.join(TEMP_JOB_DIR, f"{job_id}.txt")
+        if not os.path.exists(job_file):
+            return jsonify({"error": "Job not found"}), 404
+
+        with open(job_file, "r") as f:
+            job_data = json.load(f)
+
+        name = job_data["name"]
+        image_base64 = job_data["image"]
+
+        # Generate embedding
         embedding = generate_embedding(image_base64)
-        print(f"[register] Embedding generated, length: {len(embedding)}")
-        sys.stdout.flush()
 
-        # Load current students
+        # Save student
         students = load_students()
-
-        # Append new student
-        students.append({
-            "name": name,
-            "embedding": embedding
-        })
-
-        # Save to file
+        students.append({"name": name, "embedding": embedding})
         save_students(students)
-        print(f"[register] Student '{name}' saved successfully. Total students: {len(students)}")
-        sys.stdout.flush()
 
+        # Update job file
+        job_data["status"] = "done"
+        with open(job_file, "w") as f:
+            json.dump(job_data, f)
+
+        print(f"[job] Completed job {job_id} for student {name}")
         return jsonify({"success": True, "student": name})
 
     except Exception as e:
-        print(f"[register] ERROR: {e}")
-        sys.stdout.flush()
-        return jsonify({"error": str(e)}), 400
+        print(f"[job] ERROR in complete_register {job_id}: {e}")
+        return jsonify({"error": str(e)}), 500
+
+# -----------------------------
+# List all jobs
+# -----------------------------
+@app.route("/list-jobs", methods=["GET"])
+def list_jobs():
+    jobs = []
+    for filename in os.listdir(TEMP_JOB_DIR):
+        if filename.endswith(".txt"):
+            try:
+                with open(os.path.join(TEMP_JOB_DIR, filename), "r") as f:
+                    data = json.load(f)
+                jobs.append({
+                    "job_id": filename.replace(".txt", ""),
+                    "name": data.get("name"),
+                    "status": data.get("status")
+                })
+            except Exception as e:
+                jobs.append({
+                    "job_id": filename.replace(".txt", ""),
+                    "error": str(e)
+                })
+    return jsonify(jobs)
 
 # -----------------------------
 # View all students

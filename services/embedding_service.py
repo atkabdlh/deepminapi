@@ -6,6 +6,12 @@ import cv2
 # preload model once
 model = DeepFace.build_model("OpenFace")
 
+def save_temp_image(job_id, name, image_base64):
+    job_file = f"temp_jobs/{job_id}.txt"
+    data = {"name": name, "image": image_base64, "status": "pending"}
+    with open(job_file, "w") as f:
+        json.dump(data, f)
+
 def base64_to_image(base64_string):
     img_data = base64.b64decode(base64_string)
     np_arr = np.frombuffer(img_data, np.uint8)
