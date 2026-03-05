@@ -116,12 +116,8 @@ def generate_single_embedding_endpoint():
     except Exception as e:
         return jsonify({"error": str(e)}), 400
 
-
-
-
-
 # -----------------------------
-# Start registration
+# Start registration 
 # -----------------------------
 @app.route("/register-student", methods=["POST"])
 def start_register_student():
@@ -134,7 +130,13 @@ def start_register_student():
             return jsonify({"error": "Missing name or image"}), 400
 
         job_id = uuid4().hex
+        # Save temp image & job data
         save_temp_image(job_id, name, image_base64)
+
+        # job file format:
+        job_file = os.path.join(TEMP_JOB_DIR, f"{job_id}.txt")
+        with open(job_file, "w") as f:
+            json.dump({"name": name, "image": image_base64, "status": "pending"}, f)
 
         print(f"[job] Created job {job_id} for student {name}")
         return jsonify({"job_id": job_id, "status": "pending"})
@@ -143,44 +145,9 @@ def start_register_student():
         print(f"[job] ERROR in start_register_student: {e}")
         return jsonify({"error": str(e)}), 500
 
-# -----------------------------
-# Complete registration
-# -----------------------------
-@app.route("/complete-register/<job_id>", methods=["POST"])
-def complete_register(job_id):
-    try:
-        job_file = os.path.join(TEMP_JOB_DIR, f"{job_id}.txt")
-        if not os.path.exists(job_file):
-            return jsonify({"error": "Job not found"}), 404
-
-        with open(job_file, "r") as f:
-            job_data = json.load(f)
-
-        name = job_data["name"]
-        image_base64 = job_data["image"]
-
-        # Generate embedding
-        embedding = generate_embedding(image_base64)
-
-        # Save student
-        students = load_students()
-        students.append({"name": name, "embedding": embedding})
-        save_students(students)
-
-        # Update job file
-        job_data["status"] = "done"
-        with open(job_file, "w") as f:
-            json.dump(job_data, f)
-
-        print(f"[job] Completed job {job_id} for student {name}")
-        return jsonify({"success": True, "student": name})
-
-    except Exception as e:
-        print(f"[job] ERROR in complete_register {job_id}: {e}")
-        return jsonify({"error": str(e)}), 500
 
 # -----------------------------
-# List all jobs
+# List jobs 
 # -----------------------------
 @app.route("/list-jobs", methods=["GET"])
 def list_jobs():
