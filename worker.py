@@ -1,7 +1,8 @@
 import time
 import os
 import json
-from services.embedding_service import generate_embedding, load_students, save_students
+from services.embedding_service import generate_embedding
+from services.student_service import load_students, save_students
 
 TEMP_JOB_DIR = "temp_jobs"
 os.makedirs(TEMP_JOB_DIR, exist_ok=True)
