@@ -2,6 +2,7 @@ from deepface import DeepFace
 import base64
 import numpy as np
 import cv2
+import json
 
 # preload model once
 model = DeepFace.build_model("OpenFace")
