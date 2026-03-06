@@ -1,6 +1,7 @@
 import time
 import os
 import json
+import logging
 from services.embedding_service import generate_embedding
 from services.student_service import load_students, save_students
 
