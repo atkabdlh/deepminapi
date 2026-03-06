@@ -1,0 +1,84 @@
+# =========================
+# Python / Flask
+# =========================
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Virtual environments
+venv/
+env/
+.venv/
+.env/
+
+# =========================
+# Logs and temporary files
+# =========================
+*.log
+server.log
+*.sqlite3
+*.db
+temp_jobs/
+*.py~         # editor backup files
+*.swp          # vim swap files
+
+# =========================
+# TensorFlow / DeepFace caches
+# =========================
+# DeepFace downloads pre-trained models in ~/.deepface or ./models/
+models/
+__deepface_cache__/
+*.h5
+*.pb
+
+# =========================
+# Distribution / packaging
+# =========================
+build/
+dist/
+*.egg-info/
+*.egg
+
+# =========================
+# Testing / coverage
+# =========================
+.coverage
+.tox/
+.nox/
+.pytest_cache/
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+
+# =========================
+# IDEs / editors
+# =========================
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+
+# =========================
+# OS files
+# =========================
+.DS_Store
+Thumbs.db
+
+# =========================
+# Jupyter notebooks
+# =========================
+.ipynb_checkpoints/
+
+# =========================
+# Environment / secrets
+# =========================
+.env
+.env.local
+.env.*.local

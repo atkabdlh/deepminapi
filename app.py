@@ -3,9 +3,10 @@ import os
 import json
 from uuid import uuid4
 import logging
+from services.memlog_service import log_memory_usage
 from services.embedding_service import generate_embedding, generate_multiple_embeddings, save_temp_image
 from services.matching_service import best_match, best_match_in_class, get_students_for_class, get_all_students_data
-from services.student_service import load_students, save_students
+from services.student_service import save_students
 
 app = Flask(__name__)
 
@@ -37,8 +38,8 @@ logger = logging.getLogger(__name__)
 def health_check():
     logger.info("Health check requested")
     return jsonify({
-        "status": "ok",
-        "service": "face-attendance-api"
+        "status": "success",
+        "message": "Server is running"
     }), 200
 
 # -----------------------------
@@ -51,18 +52,23 @@ def get_all_students_endpoint():
         image_base64 = data.get("image")
         if not image_base64:
             logger.warning("get_all_students: no image provided")
-            return jsonify({"error": "No image provided"}), 400
+            return jsonify({"status": "error", "message": "No image provided"}), 400
 
+        log_memory_usage(context="before embedding")
         embedding = generate_embedding(image_base64)
+        log_memory_usage(context="after embedding")
         students = get_all_students_data()
+        
+        log_memory_usage(context="before matching")
         student = best_match(embedding, students, threshold=MATCH_THRESHOLD)
+        log_memory_usage(context="after matching")
 
         logger.info(f"get_all_students: matched={bool(student)}")
-        return jsonify({"matched": bool(student), "student": student} if student else {"matched": False})
+        return jsonify({"status": "success", "message": f"Matched student in all classes", "matched": bool(student), "student": student} if student else {"status": "success", "message": f"No match found", "matched": False})
 
     except Exception as e:
         logger.exception("get_all_students: error processing request")
-        return jsonify({"error": str(e)}), 400
+        return jsonify({"status": "error", "message": str(e) if str(e) else"Error searching for student"}), 400
 
 # -----------------------------
 # Search through students in a class
@@ -76,24 +82,29 @@ def get_students_in_class_endpoint():
 
         if not class_id:
             logger.warning("get_students_in_class: no class_id provided")
-            return jsonify({"error": "No class_id provided"}), 400
+            return jsonify({"status": "error", "message": "No class_id provided"}), 400
         if not image_base64:
             logger.warning("get_students_in_class: no image provided")
-            return jsonify({"error": "No image provided"}), 400
-
+            return jsonify({"status": "error", "message": "No image provided"}), 400
+        
+        log_memory_usage(context="before embedding")
         embedding = generate_embedding(image_base64)
+        log_memory_usage(context="after embedding")
         students = get_students_for_class(class_id)
+
+        log_memory_usage(context="before matching")
         student = best_match_in_class(embedding, students, threshold=MATCH_THRESHOLD)
+        log_memory_usage(context="after matching")
 
         logger.info(f"get_students_in_class: class_id={class_id} matched={bool(student)}")
-        return jsonify({"matched": bool(student), "student": student} if student else {"matched": False})
+        return jsonify({"status": "success", "message": f"Matched student in {class_id}", "matched": bool(student), "student": student} if student else {"status": "success", "message": f"No match found in {class_id}", "matched": False})
 
     except Exception as e:
         logger.exception("get_students_in_class: error processing request")
-        return jsonify({"error": str(e)}), 400
+        return jsonify({"status": "error", "message": str(e) if str(e) else f"Error searching for student in {class_id}"}), 400
 
 # -----------------------------
-# Embed multiple students
+# Embed multiple students (benchmark testing)
 # -----------------------------
 @app.route("/generate-multiple-embeddings", methods=["POST"])
 def generate_multiple_embeddings_endpoint():
@@ -103,36 +114,17 @@ def generate_multiple_embeddings_endpoint():
 
         if not images_base64 or not isinstance(images_base64, list):
             logger.warning("generate_multiple_embeddings: no images or invalid format")
-            return jsonify({"error": "No images provided or invalid format"}), 400
+            return jsonify({"status": "error", "message": "No images provided or invalid format"}), 400
 
+        log_memory_usage(context="before embedding multiple")
         embeddings = generate_multiple_embeddings(images_base64)
+        log_memory_usage(context="after embedding multiple")
         logger.info(f"generate_multiple_embeddings: processed {len(embeddings)} embeddings")
-        return jsonify({"embeddings": embeddings})
+        return jsonify({"status": "success", "message": f"Processed {len(embeddings)} embeddings", "embeddings": embeddings})
 
     except Exception as e:
         logger.exception("generate_multiple_embeddings: error processing request")
-        return jsonify({"error": str(e)}), 400
-
-# -----------------------------
-# Embed one student
-# -----------------------------
-@app.route("/generate-single-embedding", methods=["POST"])
-def generate_single_embedding_endpoint():
-    try:
-        data = request.json
-        image_base64 = data.get("image")
-
-        if not image_base64:
-            logger.warning("generate_single_embedding: no image provided")
-            return jsonify({"error": "No image provided"}), 400
-
-        embedding = generate_embedding(image_base64)
-        logger.info("generate_single_embedding: embedding created")
-        return jsonify({"embedding": embedding})
-
-    except Exception as e:
-        logger.exception("generate_single_embedding: error processing request")
-        return jsonify({"error": str(e)}), 400
+        return jsonify({"status": "error", "message": str(e) if str(e) else "Error generating multiple embeddings"}), 400
 
 # -----------------------------
 # Start registration 
@@ -146,24 +138,24 @@ def start_register_student():
 
         if not name or not image_base64:
             logger.warning("register-student: missing name or image")
-            return jsonify({"error": "Missing name or image"}), 400
+            return jsonify({"status": "error", "message": "Missing name or image"}), 400
 
         job_id = uuid4().hex
         save_temp_image(job_id, name, image_base64)
 
         job_file = os.path.join(TEMP_JOB_DIR, f"{job_id}.txt")
         with open(job_file, "w") as f:
-            json.dump({"name": name, "image": image_base64, "status": "pending"}, f)
+            json.dump({"name": name, "image": image_base64, "job_status": "pending"}, f)
 
         logger.info(f"[job] Created job {job_id} for student {name}")
-        return jsonify({"job_id": job_id, "status": "pending"})
+        return jsonify({"status": "success", "message": f"Job {job_id} created for {name}", "job_id": job_id, "job_status": "pending"})
 
     except Exception as e:
         logger.exception("[job] ERROR in start_register_student")
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"status": "error", "message": str(e) if str(e) else f"Error registering student {name}"}), 500
 
 # -----------------------------
-# List jobs 
+# List jobs (monitoring)
 # -----------------------------
 @app.route("/list-jobs", methods=["GET"])
 def list_jobs():
@@ -176,7 +168,7 @@ def list_jobs():
                 jobs.append({
                     "job_id": filename.replace(".txt", ""),
                     "name": data.get("name"),
-                    "status": data.get("status")
+                    "job_status": data.get("job_status")
                 })
             except Exception as e:
                 jobs.append({
@@ -184,16 +176,9 @@ def list_jobs():
                     "error": str(e)
                 })
     logger.info(f"list_jobs: found {len(jobs)} jobs")
-    return jsonify(jobs)
+    return jsonify({"status": "success", "message": f"Found {len(jobs)} jobs", "jobs": jobs})
 
-# -----------------------------
-# View all students
-# -----------------------------
-@app.route("/view-students", methods=["GET"])
-def view_students():
-    students = load_students()
-    logger.info(f"view_students: {len(students)} students returned")
-    return jsonify(students)
+
 
 # -----------------------------
 # Export all students
@@ -203,7 +188,7 @@ def export_students():
     file_path = "students.json"
     if not os.path.exists(file_path):
         logger.warning("export_students: no data found")
-        return {"error": "No data found"}, 404
+        return {"status": "error", "message": "No data found"}, 404
 
     logger.info("export_students: exporting students.json")
     return send_file(file_path, as_attachment=True)
@@ -216,11 +201,11 @@ def import_students():
     data = request.json
     if not isinstance(data, list):
         logger.warning("import_students: invalid format")
-        return {"error": "Invalid format"}, 400
+        return {"status": "error", "message": "Invalid format"}, 400
 
     save_students(data)
     logger.info(f"import_students: imported {len(data)} students")
-    return {"success": True}
+    return {"status": "success", "message": f"Imported {len(data)} students"}
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))  
