@@ -71,7 +71,7 @@ def best_match(new_embedding, students=None, threshold=MATCH_THRESHOLD):
         return students[idx]
     return None
 
-def best_match_in_class(new_embedding, students=None, threshold=MATCH_THRESHOLD):
+def best_match_in_class(new_embedding, students=None, class_id=None, threshold=MATCH_THRESHOLD):
     """
     Search students in a class for best match
     """
@@ -81,7 +81,10 @@ def best_match_in_class(new_embedding, students=None, threshold=MATCH_THRESHOLD)
     if not students:
         return None
 
-    embeddings = np.array([s["embedding"] for s in students])
+    if not class_id:
+        raise ValueError("class_id must be provided for class search")
+
+    embeddings = np.array([s["embedding"] for s in students if s["class_id"] == class_id])
     new_vec = np.array(new_embedding)
 
     similarities = cosine_similarity_matrix(embeddings, new_vec)

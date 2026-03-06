@@ -2,8 +2,10 @@ import time
 import os
 import json
 import logging
+import numpy as np
+from services.matching_service import best_match, best_match_in_class
 from services.memlog_service import log_memory_usage
-from services.embedding_service import generate_embedding
+from services.embedding_service import generate_embedding, remove_temp_image
 from services.student_service import load_students, save_students
 
 TEMP_JOB_DIR = "temp_jobs"
@@ -20,43 +22,154 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+def process_register(job_data):
+    try:
+        name = job_data["name"]
+        image_path = job_data["image_path"]
+
+        log_memory_usage(context=f"before processing {name}")
+        logger.info(f"[worker] Processing job {job_data['job_id']} for {name}...")
+        embedding = generate_embedding(image_path)
+        log_memory_usage(context=f"after embedding {name}")
+
+        # Save student
+        students = load_students()
+        students = [s for s in students if s["name"] != name]
+        students.append({"name": name, "embedding": embedding})
+        save_students(students)
+        log_memory_usage(context=f"after saving {name}")
+
+        # Mark job done
+        job_data["job_status"] = "done"
+        filepath = os.path.join(TEMP_JOB_DIR, f"{job_data['job_id']}.json")
+        with open(filepath, "w") as f:
+            json.dump(job_data, f)
+
+        log_memory_usage(context=f"after processing {name}")
+        logger.info(f"[worker] Completed job {job_data['job_id']} for {name}")
+    except Exception as e:
+        logger.error(f"[worker] Failed job {job_data['job_id']}: {e}")
+
+def process_match(job_data):
+    try:
+        image_path = job_data["image_path"]
+        
+        log_memory_usage(context=f"before processing {image_path}")
+        logger.info(f"[worker-matching] Processing job {job_data['job_id']} for {image_path}...")
+        embedding = generate_embedding(image_path)
+        log_memory_usage(context=f"after embedding {image_path}")
+
+        # Load students
+        students = load_students()
+        log_memory_usage(context=f"after loading students {image_path}")
+
+        # Find matches
+        log_memory_usage(context=f"before matching {image_path}")
+        matches = best_match(embedding, students, threshold=0.8)
+        log_memory_usage(context=f"after matching {image_path}")
+
+        # Mark job done
+        job_data["job_status"] = "done"
+        filepath = os.path.join(TEMP_JOB_DIR, f"{job_data['job_id']}.json")
+        with open(filepath, "w") as f:
+            json.dump(job_data, f)
+
+        log_memory_usage(context=f"after processing {image_path}")
+        logger.info(f"[worker-matching] Completed job {job_data['job_id']} for {image_path} with {matches}")
+    except Exception as e:
+        logger.error(f"[worker-matching] Failed job {job_data['job_id']}: {e}")
+
+def process_match_class(job_data):
+    try:
+        image_path = job_data["image_path"]
+        
+        log_memory_usage(context=f"before processing {image_path}")
+        logger.info(f"[worker-matching-class] Processing job {job_data['job_id']} for {image_path}...")
+        embedding = generate_embedding(image_path)
+        log_memory_usage(context=f"after embedding {image_path}")
+
+        # Load students
+        students = load_students()
+        log_memory_usage(context=f"after loading students {image_path}")
+
+        # Find matches
+        log_memory_usage(context=f"before matching {image_path}")
+        matches = best_match_in_class(embedding, students, class_id=job_data["class_id"], threshold=0.8)
+        log_memory_usage(context=f"after matching {image_path}")
+
+        # Mark job done
+        job_data["job_status"] = "done"
+        filepath = os.path.join(TEMP_JOB_DIR, f"{job_data['job_id']}.json")
+        with open(filepath, "w") as f:
+            json.dump(job_data, f)
+
+        log_memory_usage(context=f"after processing {image_path}")
+        logger.info(f"[worker-matching-class] Completed job {job_data['job_id']} for {image_path} with {matches}")
+
+        remove_temp_image(job_data["job_id"])
+        
+    except Exception as e:
+        logger.error(f"[worker-matching-class] Failed job {job_data['job_id']}: {e}")
+
+def bulk_register(job_data):
+    try:
+        existing_students = load_students()
+        students = job_data["students"]
+        log_memory_usage(context=f"before processing bulk register")
+        
+        logger.info(f"[worker-bulk-register] Processing job {job_data['job_id']} for {len(students)} students...")
+        new_students = []
+        for student in students:
+            name = student["name"]
+            image_path = student["image_path"]
+
+            embedding = generate_embedding(image_path)
+
+            # Delete old embedding if any
+            existing_students = [s for s in existing_students if s["name"] != name] 
+            # Add new embedding for this student (replace if exists)
+            new_students.append({"name": name, "embedding": embedding})
+
+        all_students = existing_students + new_students
+        save_students(all_students)
+        log_memory_usage(context=f"after saving bulk register") 
+        
+        # Mark job done
+        job_data["job_status"] = "done"
+        filepath = os.path.join(TEMP_JOB_DIR, f"{job_data['job_id']}.json")
+        with open(filepath, "w") as f:
+            json.dump(job_data, f)
+
+        log_memory_usage(context=f"after processing bulk register")
+        logger.info(f"[worker-bulk-register] Completed job {job_data['job_id']} for {len(students)} students")
+    except Exception as e:
+        logger.error(f"[worker-bulk-register] Failed job {job_data['job_id']}: {e}")
+
 def background_worker():
-    logger.info("[worker] Starting background worker...")
+    logger.info("[background_worker] Starting background worker...")
     while True:
         for filename in os.listdir(TEMP_JOB_DIR):
-            if filename.endswith(".txt"):
-                filepath = os.path.join(TEMP_JOB_DIR, filename)
-                with open(filepath, "r") as f:
-                    job_data = json.load(f)
+            if not filename.endswith(".json"):
+                continue
+            
+            filepath = os.path.join(TEMP_JOB_DIR, filename)
+            with open(filepath, "r") as f:
+                job_data = json.load(f)
 
-                if job_data.get("job_status") != "pending":
+                if job_data["job_status"] != "pending":
                     continue
-                try:
-                    name = job_data["name"]
-                    image_base64 = job_data["image"]
-                    log_memory_usage(context=f"before processing {name}")
-                    
-                    logger.info(f"[worker] Processing job {filename} for {name}...")
-                    embedding = generate_embedding(image_base64)
-
-                    # Save student
-                    log_memory_usage(context=f"after embedding {name}")
-                    students = load_students()
-                    students = [s for s in students if s["name"] != name]
-                    students.append({"name": name, "embedding": embedding})
-                    save_students(students)
-                    log_memory_usage(context=f"after saving {name}")
-
-                    # Mark job done
-                    job_data["job_status"] = "done"
-                    with open(filepath, "w") as f:
-                        json.dump(job_data, f)
-
-                    log_memory_usage(context=f"after processing {name}")
-                    logger.info(f"[worker] Completed job {filename} for {name}")
-                except Exception as e:
-                    logger.error(f"[worker] Failed job {filename}: {e}")
+                
+                job_type = job_data["job_type"]
+                if job_type == "register":
+                    process_register(job_data)
+                elif job_type == "match_student" :
+                    process_match(job_data)
+                elif job_type == "match_in_class" :
+                    process_match_class(job_data)
+                elif job_type == "bulk_register" :
+                    bulk_register(job_data)
         time.sleep(2)  # check every 2 seconds
+        log_memory_usage("worker idle")
 
 
 if __name__ == "__main__":

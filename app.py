@@ -3,9 +3,7 @@ import os
 import json
 from uuid import uuid4
 import logging
-from services.memlog_service import log_memory_usage
-from services.embedding_service import generate_embedding, generate_multiple_embeddings, save_temp_image
-from services.matching_service import best_match, best_match_in_class, get_students_for_class, get_all_students_data
+from services.embedding_service import save_temp_image
 from services.student_service import save_students
 
 app = Flask(__name__)
@@ -50,25 +48,24 @@ def get_all_students_endpoint():
     try:
         data = request.json
         image_base64 = data.get("image")
+
         if not image_base64:
             logger.warning("get_all_students: no image provided")
             return jsonify({"status": "error", "message": "No image provided"}), 400
-
-        log_memory_usage(context="before embedding")
-        embedding = generate_embedding(image_base64)
-        log_memory_usage(context="after embedding")
-        students = get_all_students_data()
         
-        log_memory_usage(context="before matching")
-        student = best_match(embedding, students, threshold=MATCH_THRESHOLD)
-        log_memory_usage(context="after matching")
+        job_id = uuid4().hex
+        save_temp_image(job_id, image_base64)
 
-        logger.info(f"get_all_students: matched={bool(student)}")
-        return jsonify({"status": "success", "message": f"Matched student in all classes", "matched": bool(student), "student": student} if student else {"status": "success", "message": f"No match found", "matched": False})
+        job_file = os.path.join(TEMP_JOB_DIR, f"{job_id}.json")
+        with open(job_file, "w") as f:
+            json.dump({ "image": image_base64, "job_status": "pending", "job_type": "matching" }, f)
+
+        logger.info(f"[job] Created job {job_id} for matching")
+        return jsonify({"status": "success", "message": f"Job {job_id} created for matching", "job_id": job_id, "job_status": "pending"})
 
     except Exception as e:
-        logger.exception("get_all_students: error processing request")
-        return jsonify({"status": "error", "message": str(e) if str(e) else"Error searching for student"}), 400
+        logger.exception("[job] ERROR in get_all_students_endpoint")
+        return jsonify({"status": "error", "message": str(e) if str(e) else f"Error matching student"}), 400
 
 # -----------------------------
 # Search through students in a class
@@ -87,20 +84,18 @@ def get_students_in_class_endpoint():
             logger.warning("get_students_in_class: no image provided")
             return jsonify({"status": "error", "message": "No image provided"}), 400
         
-        log_memory_usage(context="before embedding")
-        embedding = generate_embedding(image_base64)
-        log_memory_usage(context="after embedding")
-        students = get_students_for_class(class_id)
+        job_id = uuid4().hex
+        save_temp_image(job_id, image_base64)
 
-        log_memory_usage(context="before matching")
-        student = best_match_in_class(embedding, students, threshold=MATCH_THRESHOLD)
-        log_memory_usage(context="after matching")
+        job_file = os.path.join(TEMP_JOB_DIR, f"{job_id}.json")
+        with open(job_file, "w") as f:
+            json.dump({ "class_id": class_id, "image": image_base64, "job_status": "pending", "job_type": "match_in_class" }, f)
 
-        logger.info(f"get_students_in_class: class_id={class_id} matched={bool(student)}")
-        return jsonify({"status": "success", "message": f"Matched student in {class_id}", "matched": bool(student), "student": student} if student else {"status": "success", "message": f"No match found in {class_id}", "matched": False})
+        logger.info(f"[job] Created job {job_id} for match_in_class")
+        return jsonify({"status": "success", "message": f"Job {job_id} created for match_in_class, {class_id}", "job_id": job_id, "job_status": "pending"})
 
     except Exception as e:
-        logger.exception("get_students_in_class: error processing request")
+        logger.exception("[job] ERROR in get_students_in_class_endpoint")
         return jsonify({"status": "error", "message": str(e) if str(e) else f"Error searching for student in {class_id}"}), 400
 
 # -----------------------------
@@ -110,27 +105,40 @@ def get_students_in_class_endpoint():
 def generate_multiple_embeddings_endpoint():
     try:
         data = request.json
-        images_base64 = data.get("images")
+        students = data.get("students")
 
-        if not images_base64 or not isinstance(images_base64, list):
-            logger.warning("generate_multiple_embeddings: no images or invalid format")
-            return jsonify({"status": "error", "message": "No images provided or invalid format"}), 400
+        if not students or not isinstance(students, list):
+            logger.warning("generate_multiple_embeddings: no students or invalid format")
+            return jsonify({"status": "error", "message": "No students provided or invalid format"}), 400
 
-        log_memory_usage(context="before embedding multiple")
-        embeddings = generate_multiple_embeddings(images_base64)
-        log_memory_usage(context="after embedding multiple")
-        logger.info(f"generate_multiple_embeddings: processed {len(embeddings)} embeddings")
-        return jsonify({"status": "success", "message": f"Processed {len(embeddings)} embeddings", "embeddings": embeddings})
+        job_id = uuid4().hex
+        students_data = []
+        for student in students:
+            name = student.get("name")
+            image_base64 = student.get("image")
+            if not name or not image_base64:
+                logger.warning(f"generate_multiple_embeddings: missing name or image for student {student}")
+                return jsonify({"status": "error", "message": f"Missing name or image for student {student}"}), 400
+            students_data.append({"name": name, "image": image_base64})
+
+        save_temp_image(job_id, students_data)
+
+        job_file = os.path.join(TEMP_JOB_DIR, f"{job_id}.json")
+        with open(job_file, "w") as f:
+            json.dump({"students": students_data, "job_status": "pending", "job_type": "bulk_register" }, f)
+        
+        logger.info(f"[job] Created job {job_id} for bulk register")
+        return jsonify({"status": "success", "message": f"Job {job_id} created for bulk register, {len(students)} students", "job_id": job_id, "job_status": "pending"})
 
     except Exception as e:
-        logger.exception("generate_multiple_embeddings: error processing request")
-        return jsonify({"status": "error", "message": str(e) if str(e) else "Error generating multiple embeddings"}), 400
+        logger.exception("[job] ERROR in generate_multiple_embeddings_endpoint")
+        return jsonify({"status": "error", "message": str(e) if str(e) else "Error generating multiple embeddings"}), 500
 
 # -----------------------------
 # Start registration 
 # -----------------------------
 @app.route("/register-student", methods=["POST"])
-def start_register_student():
+def register_student():
     try:
         data = request.json
         name = data.get("name")
@@ -143,15 +151,15 @@ def start_register_student():
         job_id = uuid4().hex
         save_temp_image(job_id, name, image_base64)
 
-        job_file = os.path.join(TEMP_JOB_DIR, f"{job_id}.txt")
+        job_file = os.path.join(TEMP_JOB_DIR, f"{job_id}.json")
         with open(job_file, "w") as f:
-            json.dump({"name": name, "image": image_base64, "job_status": "pending"}, f)
+            json.dump({"name": name, "image": image_base64, "job_status": "pending", "job_type": "register" }, f)
 
         logger.info(f"[job] Created job {job_id} for student {name}")
         return jsonify({"status": "success", "message": f"Job {job_id} created for {name}", "job_id": job_id, "job_status": "pending"})
 
     except Exception as e:
-        logger.exception("[job] ERROR in start_register_student")
+        logger.exception("[job] ERROR in register_student")
         return jsonify({"status": "error", "message": str(e) if str(e) else f"Error registering student {name}"}), 500
 
 # -----------------------------
@@ -161,18 +169,19 @@ def start_register_student():
 def list_jobs():
     jobs = []
     for filename in os.listdir(TEMP_JOB_DIR):
-        if filename.endswith(".txt"):
+        if filename.endswith(".json"):
             try:
                 with open(os.path.join(TEMP_JOB_DIR, filename), "r") as f:
                     data = json.load(f)
                 jobs.append({
-                    "job_id": filename.replace(".txt", ""),
+                    "job_id": filename.replace(".json", ""),
                     "name": data.get("name"),
-                    "job_status": data.get("job_status")
+                    "job_status": data.get("job_status"),
+                    "job_type": data.get("job_type")
                 })
             except Exception as e:
                 jobs.append({
-                    "job_id": filename.replace(".txt", ""),
+                    "job_id": filename.replace(".json", ""),
                     "error": str(e)
                 })
     logger.info(f"list_jobs: found {len(jobs)} jobs")

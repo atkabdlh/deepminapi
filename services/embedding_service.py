@@ -3,15 +3,79 @@ import base64
 import numpy as np
 import cv2
 import json
+import os
+import logging
 
 # preload model once
 model = DeepFace.build_model("OpenFace")
 
-def save_temp_image(job_id, name, image_base64):
-    job_file = f"temp_jobs/{job_id}.txt"
-    data = {"name": name, "image": image_base64, "status": "pending"}
+TEMP_JOB_DIR = os.path.join(os.path.dirname(__file__), "../temp_jobs")
+
+def remove_temp_image(job_id):
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger(__name__)
+
+    for filename in os.listdir(TEMP_JOB_DIR):
+        if job_id in filename:
+            file_path = os.path.join(TEMP_JOB_DIR, filename)
+            logger.info(f"{job_id} is done, deleting file: {file_path}")
+            if os.path.isfile(file_path):
+                os.remove(file_path)
+    image_path = os.path.join(TEMP_JOB_DIR, f"{job_id}.jpg")
+    if os.path.exists(image_path):
+        logger.info(f"{job_id} is done, deleting file: {image_path}")
+        os.remove(image_path)
+    logger.info(f"Deleted file(s) for {job_id}")
+        
+
+def save_image_helper(job_id, image_base64):
+    image_bytes = base64.b64decode(image_base64)
+    image_path = os.path.join(TEMP_JOB_DIR, f"{job_id}.jpg")
+    with open(image_path, "wb") as img:
+        img.write(image_bytes)
+    return image_path
+
+def save_temp_image(job_id, name=None, image_base64=None, students=None):
+    job_file = os.path.join(TEMP_JOB_DIR, f"{job_id}.json")
+
+    if name and image_base64:
+        image_path = save_image_helper(job_id, image_base64)
+        data = {
+            "name": name,
+            "image_path": image_path,
+            "job_status": "pending"
+        }
+    elif image_base64 :
+        image_path = save_image_helper(job_id, image_base64)
+        data = {
+            "image_path": image_path,
+            "job_status": "pending"
+        }
+    elif students:
+        students_data = []
+        for i, student in enumerate(students):
+            name = student["name"]
+            image_base64 = student["image"]
+
+            if not name or not image_base64:
+                raise ValueError(f"Invalid student data: {student}")
+
+            image_path = save_image_helper(job_id + f"_{i}", image_base64)
+            students_data.append({
+                "name": name,
+                "image_path": image_path
+            })
+        data = {
+            "students": students_data,
+            "job_status": "pending"
+        }
+    else:
+        raise ValueError("Invalid input")
+
     with open(job_file, "w") as f:
         json.dump(data, f)
+    
+    return job_file
 
 def base64_to_image(base64_string):
     img_data = base64.b64decode(base64_string)
@@ -29,12 +93,3 @@ def generate_embedding(base64_string):
     )
 
     return result[0]["embedding"]
-    
-def generate_multiple_embeddings(base64_strings: list):
-    embeddings = []
-
-    for img in base64_strings:
-        embedding = generate_embedding(img)
-        embeddings.append(embedding)
-
-    return embeddings
