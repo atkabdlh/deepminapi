@@ -12,20 +12,17 @@ model = DeepFace.build_model("OpenFace")
 TEMP_JOB_DIR = os.path.join(os.path.dirname(__file__), "../temp_jobs")
 
 def remove_temp_image(job_id):
-    logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger(__name__)
 
     for filename in os.listdir(TEMP_JOB_DIR):
         if job_id in filename:
             file_path = os.path.join(TEMP_JOB_DIR, filename)
-            logger.info(f"{job_id} is done, deleting file: {file_path}")
             if os.path.isfile(file_path):
-                os.remove(file_path)
-    image_path = os.path.join(TEMP_JOB_DIR, f"{job_id}.jpg")
-    if os.path.exists(image_path):
-        logger.info(f"{job_id} is done, deleting file: {image_path}")
-        os.remove(image_path)
-    logger.info(f"Deleted file(s) for {job_id}")
+                try:
+                    os.remove(file_path)
+                    logger.info(f"{job_id} is done, deleted file: {file_path}")
+                except Exception as e:
+                    logger.warning(f"Failed to delete {file_path}: {e}")
         
 
 def save_image_helper(job_id, image_base64):
@@ -35,7 +32,7 @@ def save_image_helper(job_id, image_base64):
         img.write(image_bytes)
     return image_path
 
-def save_temp_image(job_id, name=None, image_base64=None, students=None):
+def save_temp_image(job_id, job_type, name=None, image_base64=None):
     job_file = os.path.join(TEMP_JOB_DIR, f"{job_id}.json")
 
     if name and image_base64:
@@ -43,30 +40,14 @@ def save_temp_image(job_id, name=None, image_base64=None, students=None):
         data = {
             "name": name,
             "image_path": image_path,
+            "job_type": job_type,
             "job_status": "pending"
         }
     elif image_base64 :
         image_path = save_image_helper(job_id, image_base64)
         data = {
             "image_path": image_path,
-            "job_status": "pending"
-        }
-    elif students:
-        students_data = []
-        for i, student in enumerate(students):
-            name = student["name"]
-            image_base64 = student["image"]
-
-            if not name or not image_base64:
-                raise ValueError(f"Invalid student data: {student}")
-
-            image_path = save_image_helper(job_id + f"_{i}", image_base64)
-            students_data.append({
-                "name": name,
-                "image_path": image_path
-            })
-        data = {
-            "students": students_data,
+            "job_type": job_type,
             "job_status": "pending"
         }
     else:

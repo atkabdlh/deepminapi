@@ -43,7 +43,7 @@ def load_students_for_class(class_id):
         all_students = load_students()
         # Only filter students with class_id
         _class_students_cache[class_id] = [
-            s for s in all_students if s.get("class_id") == class_id
+            s for s in all_students if s["class_id"] == class_id
         ]
     return _class_students_cache[class_id]
 

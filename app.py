@@ -47,18 +47,14 @@ def health_check():
 def get_all_students_endpoint():
     try:
         data = request.json
-        image_base64 = data.get("image")
+        image_base64 = data["image"]
 
         if not image_base64:
             logger.warning("get_all_students: no image provided")
             return jsonify({"status": "error", "message": "No image provided"}), 400
         
         job_id = uuid4().hex
-        save_temp_image(job_id, image_base64)
-
-        job_file = os.path.join(TEMP_JOB_DIR, f"{job_id}.json")
-        with open(job_file, "w") as f:
-            json.dump({ "image": image_base64, "job_status": "pending", "job_type": "matching" }, f)
+        save_temp_image(job_id, "matching", image_base64=image_base64)
 
         logger.info(f"[job] Created job {job_id} for matching")
         return jsonify({"status": "success", "message": f"Job {job_id} created for matching", "job_id": job_id, "job_status": "pending"})
@@ -74,8 +70,8 @@ def get_all_students_endpoint():
 def get_students_in_class_endpoint():
     try:
         data = request.json
-        class_id = data.get("class_id")
-        image_base64 = data.get("image")
+        class_id = data["class_id"]
+        image_base64 = data["image"]
 
         if not class_id:
             logger.warning("get_students_in_class: no class_id provided")
@@ -85,11 +81,7 @@ def get_students_in_class_endpoint():
             return jsonify({"status": "error", "message": "No image provided"}), 400
         
         job_id = uuid4().hex
-        save_temp_image(job_id, image_base64)
-
-        job_file = os.path.join(TEMP_JOB_DIR, f"{job_id}.json")
-        with open(job_file, "w") as f:
-            json.dump({ "class_id": class_id, "image": image_base64, "job_status": "pending", "job_type": "match_in_class" }, f)
+        save_temp_image(job_id, "match_in_class", image_base64=image_base64)
 
         logger.info(f"[job] Created job {job_id} for match_in_class")
         return jsonify({"status": "success", "message": f"Job {job_id} created for match_in_class, {class_id}", "job_id": job_id, "job_status": "pending"})
@@ -101,34 +93,28 @@ def get_students_in_class_endpoint():
 # -----------------------------
 # Embed multiple students (benchmark testing)
 # -----------------------------
-@app.route("/generate-multiple-embeddings", methods=["POST"])
-def generate_multiple_embeddings_endpoint():
+@app.route("/bulk-register", methods=["POST"])
+def bulk_register():
     try:
         data = request.json
-        students = data.get("students")
+        students = data["students"]
 
         if not students or not isinstance(students, list):
-            logger.warning("generate_multiple_embeddings: no students or invalid format")
+            logger.warning("bulk_register: no students or invalid format")
             return jsonify({"status": "error", "message": "No students provided or invalid format"}), 400
 
-        job_id = uuid4().hex
-        students_data = []
         for student in students:
-            name = student.get("name")
-            image_base64 = student.get("image")
+            job_id = uuid4().hex
+            name = student["name"]
+            image_base64 = student["image"]
             if not name or not image_base64:
-                logger.warning(f"generate_multiple_embeddings: missing name or image for student {student}")
-                return jsonify({"status": "error", "message": f"Missing name or image for student {student}"}), 400
-            students_data.append({"name": name, "image": image_base64})
+                logger.warning(f"bulk_register: missing name or image for student {name}")
+                return jsonify({"status": "error", "message": f"Missing name or image for student {name}"}), 400
 
-        save_temp_image(job_id, students_data)
+            save_temp_image(job_id, "register", name=name, image_base64=image_base64)
 
-        job_file = os.path.join(TEMP_JOB_DIR, f"{job_id}.json")
-        with open(job_file, "w") as f:
-            json.dump({"students": students_data, "job_status": "pending", "job_type": "bulk_register" }, f)
-        
-        logger.info(f"[job] Created job {job_id} for bulk register")
-        return jsonify({"status": "success", "message": f"Job {job_id} created for bulk register, {len(students)} students", "job_id": job_id, "job_status": "pending"})
+        logger.info(f"[job] Created {len(students)} job(s) for bulk register")
+        return jsonify({"status": "success", "message": f"Job(s) created for bulk register, {len(students)} students"})
 
     except Exception as e:
         logger.exception("[job] ERROR in generate_multiple_embeddings_endpoint")
@@ -141,19 +127,15 @@ def generate_multiple_embeddings_endpoint():
 def register_student():
     try:
         data = request.json
-        name = data.get("name")
-        image_base64 = data.get("image")
+        name = data["name"]
+        image_base64 = data["image"]
 
         if not name or not image_base64:
             logger.warning("register-student: missing name or image")
             return jsonify({"status": "error", "message": "Missing name or image"}), 400
 
         job_id = uuid4().hex
-        save_temp_image(job_id, name, image_base64)
-
-        job_file = os.path.join(TEMP_JOB_DIR, f"{job_id}.json")
-        with open(job_file, "w") as f:
-            json.dump({"name": name, "image": image_base64, "job_status": "pending", "job_type": "register" }, f)
+        save_temp_image(job_id, "register", name=name, image_base64=image_base64)
 
         logger.info(f"[job] Created job {job_id} for student {name}")
         return jsonify({"status": "success", "message": f"Job {job_id} created for {name}", "job_id": job_id, "job_status": "pending"})
@@ -175,9 +157,9 @@ def list_jobs():
                     data = json.load(f)
                 jobs.append({
                     "job_id": filename.replace(".json", ""),
-                    "name": data.get("name"),
-                    "job_status": data.get("job_status"),
-                    "job_type": data.get("job_type")
+                    "name": data["name"],
+                    "job_status": data["job_status"],
+                    "job_type": data["job_type"],
                 })
             except Exception as e:
                 jobs.append({
