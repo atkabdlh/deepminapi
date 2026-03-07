@@ -105,8 +105,6 @@ def process_match_class(job_data, job_id):
 
         log_memory_usage(context=f"after processing {image_path}")
         logger.info(f"[worker-matching-class] Completed job {job_id} for {image_path} with {matches}")
-
-        remove_temp_image(job_id)
         
     except Exception as e:
         logger.error(f"[worker-matching-class] Failed job {job_id}: {e}")
@@ -119,19 +117,25 @@ def background_worker():
                 continue
             
             filepath = os.path.join(TEMP_JOB_DIR, filename)
+
             with open(filepath, "r") as f:
                 job_data = json.load(f)
 
-                if job_data["job_status"] != "pending":
-                    continue
-                
-                job_type = job_data["job_type"]
-                if job_type == "register":
-                    process_register(job_data, filename.replace(".json", ""))
-                elif job_type == "match_student" :
-                    process_match(job_data, filename.replace(".json", ""))
-                elif job_type == "match_in_class" :
-                    process_match_class(job_data, filename.replace(".json", ""))
+            job_id = filename.replace(".json", "")
+
+            if job_data["job_status"] == "done":
+                remove_temp_image(job_id)
+                continue
+
+            if job_data["job_status"] != "pending":
+                continue
+            job_type = job_data["job_type"]
+            if job_type == "register":
+                process_register(job_data, job_id)
+            elif job_type == "match_student":
+                process_match(job_data, job_id)
+            elif job_type == "match_in_class":
+                process_match_class(job_data, job_id)
         time.sleep(2)  # check every 2 seconds
         # log_memory_usage("worker idle")
 

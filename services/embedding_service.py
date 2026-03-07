@@ -64,11 +64,9 @@ def base64_to_image(base64_string):
     img = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
     return img
 
-def generate_embedding(base64_string):
-    img = base64_to_image(base64_string)
-
+def generate_embedding(image_path):
     result = DeepFace.represent(
-        img_path=img,
+        img_path=image_path,
         model_name="OpenFace",
         enforce_detection=True
     )
