@@ -19,7 +19,7 @@ start_flask() {
         nohup bash -c '
         while true; do
             echo "$(date) - Starting Flask API..."
-            gunicorn app:app -b 0.0.0.0:5001 -w 1 --timeout 120 >> '"$LOG_FILE"' 2>&1
+            gunicorn app:app -b 0.0.0.0:5000 -w 1 --timeout 120 >> '"$LOG_FILE"' 2>&1
             echo "$(date) - Flask API crashed! Restarting in 3s..."
             sleep 3
         done
