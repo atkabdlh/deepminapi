@@ -23,7 +23,6 @@ env/
 server.log
 nohup.out
 memory.log
-memory.png
 *.sqlite3
 *.db
 temp_jobs/
