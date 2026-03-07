@@ -20,9 +20,9 @@ env/
 # Logs and temporary files
 # =========================
 *.log
+*.out
+*.png
 server.log
-nohup.out
-memory.log
 *.sqlite3
 *.db
 temp_jobs/
