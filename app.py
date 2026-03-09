@@ -13,7 +13,9 @@ app = Flask(__name__)
 # -----------------------------
 MATCH_THRESHOLD = 0.6
 TEMP_JOB_DIR = "temp_jobs"
+COMPLETED_JOB_DIR = "completed_jobs"
 os.makedirs(TEMP_JOB_DIR, exist_ok=True)
+os.makedirs(COMPLETED_JOB_DIR, exist_ok=True)
 
 # -----------------------------
 # Logging setup
@@ -41,9 +43,66 @@ def health_check():
     }), 200
 
 # -----------------------------
+# List jobs (monitoring)
+# -----------------------------
+@app.route("/list-jobs", methods=["GET"])
+def list_jobs():
+    jobs = []
+    for filename in os.listdir(TEMP_JOB_DIR):
+        if filename.endswith(".json"):
+            try:
+                with open(os.path.join(TEMP_JOB_DIR, filename), "r") as f:
+                    data = json.load(f)
+                jobs.append({
+                    "job_id": filename.replace(".json", ""),
+                    "name": data["name"],
+                    "job_status": data["job_status"],
+                    "job_type": data["job_type"],
+                })
+            except Exception as e:
+                jobs.append({
+                    "job_id": filename.replace(".json", ""),
+                    "error": str(e)
+                })
+    logger.info(f"list_jobs: found {len(jobs)} jobs")
+    return jsonify({"status": "success", "message": f"Found {len(jobs)} jobs", "jobs": jobs})
+
+# -----------------------------
+# Fetch job result 
+# -----------------------------
+@app.route("/job-result/<job_id>", methods=["GET"])
+def job_result(job_id):
+    filename = f"{job_id}.json"
+    filepath = os.path.join(COMPLETED_JOB_DIR, filename)
+
+    if not os.path.exists(filepath):
+        return jsonify({
+            "job_id": job_id,
+            "status": "not_found",
+            "message": "No completed job found with this id"
+        }), 404
+
+    try:
+        with open(filepath, "r") as f:
+            data = json.load(f)
+
+        return jsonify({
+            "job_id": job_id,
+            "status": data["job_status"],
+            "matches": data["matches"]
+        })
+
+    except Exception as e:
+        return jsonify({
+            "job_id": job_id,
+            "status": "error",
+            "error": str(e)
+        }), 500
+
+# -----------------------------
 # Search through all students
 # -----------------------------
-@app.route("/get_all_students", methods=["POST"])
+@app.route("/get-all-students", methods=["POST"])
 def get_all_students_endpoint():
     try:
         data = request.json
@@ -54,7 +113,7 @@ def get_all_students_endpoint():
             return jsonify({"status": "error", "message": "No image provided"}), 400
         
         job_id = uuid4().hex
-        save_temp_image(job_id, "matching", image_base64=image_base64)
+        save_temp_image(job_id, "match_student", image_base64=image_base64)
 
         logger.info(f"[job] Created job {job_id} for matching")
         return jsonify({"status": "success", "message": f"Job {job_id} created for matching", "job_id": job_id, "job_status": "pending"})
@@ -91,6 +150,30 @@ def get_students_in_class_endpoint():
         return jsonify({"status": "error", "message": str(e) if str(e) else f"Error searching for student in {class_id}"}), 400
 
 # -----------------------------
+# Start registration 
+# -----------------------------
+@app.route("/register-student", methods=["POST"])
+def register_student():
+    try:
+        data = request.json
+        name = data["name"]
+        image_base64 = data["image"]
+
+        if not name or not image_base64:
+            logger.warning("register-student: missing name or image")
+            return jsonify({"status": "error", "message": "Missing name or image"}), 400
+
+        job_id = uuid4().hex
+        save_temp_image(job_id, "register", name=name, image_base64=image_base64)
+
+        logger.info(f"[job] Created job {job_id} for student {name}")
+        return jsonify({"status": "success", "message": f"Job {job_id} created for {name}", "job_id": job_id, "job_status": "pending"})
+
+    except Exception as e:
+        logger.exception("[job] ERROR in register_student")
+        return jsonify({"status": "error", "message": str(e) if str(e) else f"Error registering student {name}"}), 500
+
+# -----------------------------
 # Embed multiple students (benchmark testing)
 # -----------------------------
 @app.route("/bulk-register", methods=["POST"])
@@ -119,57 +202,6 @@ def bulk_register():
     except Exception as e:
         logger.exception("[job] ERROR in generate_multiple_embeddings_endpoint")
         return jsonify({"status": "error", "message": str(e) if str(e) else "Error generating multiple embeddings"}), 500
-
-# -----------------------------
-# Start registration 
-# -----------------------------
-@app.route("/register-student", methods=["POST"])
-def register_student():
-    try:
-        data = request.json
-        name = data["name"]
-        image_base64 = data["image"]
-
-        if not name or not image_base64:
-            logger.warning("register-student: missing name or image")
-            return jsonify({"status": "error", "message": "Missing name or image"}), 400
-
-        job_id = uuid4().hex
-        save_temp_image(job_id, "register", name=name, image_base64=image_base64)
-
-        logger.info(f"[job] Created job {job_id} for student {name}")
-        return jsonify({"status": "success", "message": f"Job {job_id} created for {name}", "job_id": job_id, "job_status": "pending"})
-
-    except Exception as e:
-        logger.exception("[job] ERROR in register_student")
-        return jsonify({"status": "error", "message": str(e) if str(e) else f"Error registering student {name}"}), 500
-
-# -----------------------------
-# List jobs (monitoring)
-# -----------------------------
-@app.route("/list-jobs", methods=["GET"])
-def list_jobs():
-    jobs = []
-    for filename in os.listdir(TEMP_JOB_DIR):
-        if filename.endswith(".json"):
-            try:
-                with open(os.path.join(TEMP_JOB_DIR, filename), "r") as f:
-                    data = json.load(f)
-                jobs.append({
-                    "job_id": filename.replace(".json", ""),
-                    "name": data["name"],
-                    "job_status": data["job_status"],
-                    "job_type": data["job_type"],
-                })
-            except Exception as e:
-                jobs.append({
-                    "job_id": filename.replace(".json", ""),
-                    "error": str(e)
-                })
-    logger.info(f"list_jobs: found {len(jobs)} jobs")
-    return jsonify({"status": "success", "message": f"Found {len(jobs)} jobs", "jobs": jobs})
-
-
 
 # -----------------------------
 # Export all students

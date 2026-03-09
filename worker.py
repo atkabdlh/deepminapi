@@ -9,7 +9,9 @@ from services.embedding_service import generate_embedding, remove_temp_image
 from services.student_service import load_students, save_students
 
 TEMP_JOB_DIR = "temp_jobs"
+COMPLETED_JOB_DIR = "completed_jobs"
 os.makedirs(TEMP_JOB_DIR, exist_ok=True)
+os.makedirs(COMPLETED_JOB_DIR, exist_ok=True)
 
 LOG_FILE = "server.log"
 logging.basicConfig(
@@ -53,29 +55,51 @@ def process_register(job_data, job_id):
 def process_match(job_data, job_id):
     try:
         image_path = job_data["image_path"]
-        
+
         log_memory_usage(context=f"before processing {image_path}")
         logger.info(f"[worker-matching] Processing job {job_id} for {image_path}...")
-        embedding = generate_embedding(image_path)
+
+        try:
+            embedding = generate_embedding(image_path)
+        except Exception as e:
+            if "Face could not be detected" in str(e):
+                logger.warning(f"[worker-matching] No face detected for {job_id}")
+
+                job_data["job_status"] = "failed"
+
+                filepath = os.path.join(TEMP_JOB_DIR, f"{job_id}.json")
+                with open(filepath, "w") as f:
+                    json.dump(job_data, f)
+
+                completed_filepath = os.path.join(COMPLETED_JOB_DIR, f"{job_id}.json")
+                with open(completed_filepath, "w") as f:
+                    json.dump(job_data, f)
+
+                return
+            else:
+                raise e
+
         log_memory_usage(context=f"after embedding {image_path}")
 
-        # Load students
         students = load_students()
-        log_memory_usage(context=f"after loading students {image_path}")
 
-        # Find matches
         log_memory_usage(context=f"before matching {image_path}")
         matches = best_match(embedding, students, threshold=0.8)
         log_memory_usage(context=f"after matching {image_path}")
 
-        # Mark job done
         job_data["job_status"] = "done"
+        job_data["matches"] = matches
+
         filepath = os.path.join(TEMP_JOB_DIR, f"{job_id}.json")
         with open(filepath, "w") as f:
             json.dump(job_data, f)
 
-        log_memory_usage(context=f"after processing {image_path}")
-        logger.info(f"[worker-matching] Completed job {job_id} for {image_path} with {matches}")
+        completed_filepath = os.path.join(COMPLETED_JOB_DIR, f"{job_id}.json")
+        with open(completed_filepath, "w") as f:
+            json.dump(job_data, f)
+
+        logger.info(f"[worker-matching] Completed job {job_id}")
+
     except Exception as e:
         logger.error(f"[worker-matching] Failed job {job_id}: {e}")
 
@@ -123,7 +147,7 @@ def background_worker():
 
             job_id = filename.replace(".json", "")
 
-            if job_data["job_status"] == "done":
+            if job_data["job_status"] == "done" or job_data["job_status"] == "failed":
                 remove_temp_image(job_id)
                 continue
 

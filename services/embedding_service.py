@@ -68,7 +68,7 @@ def generate_embedding(image_path):
     result = DeepFace.represent(
         img_path=image_path,
         model_name="OpenFace",
-        enforce_detection=True
+        enforce_detection=False
     )
 
     return result[0]["embedding"]

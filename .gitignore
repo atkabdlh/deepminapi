@@ -26,6 +26,7 @@ server.log
 *.sqlite3
 *.db
 temp_jobs/
+completed_jobs/
 *.py~         # editor backup files
 *.swp          # vim swap files
 

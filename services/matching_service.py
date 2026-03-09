@@ -1,13 +1,5 @@
 import numpy as np
 
-# Example structure of a student:
-# {
-#     "id": "student_123",
-#     "name": "Ali",
-#     "class_id": "class_1",
-#     "embedding": [0.12, 0.45, ..., 0.87]  # 512-dim float list
-# }
-
 # -----------------------------
 # Config
 # -----------------------------
