@@ -85,3 +85,9 @@ Thumbs.db
 .env
 .env.local
 .env.*.local
+
+# =========================
+# Local data (not for publishing)
+# =========================
+# Real student face embeddings — ship students.sample.json instead
+students.json
