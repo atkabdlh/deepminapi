@@ -1,5 +1,7 @@
 # Face Attendance API Deployment & Troubleshooting Guide
 
+> **Note:** This is a proof-of-concept (POC) for testing purposes only — not production-ready. The included `students.sample.json` contains sample/demo data only.
+
 ## Overview
 
 This document summarizes the setup, deployment, and troubleshooting
